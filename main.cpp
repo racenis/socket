@@ -161,7 +161,29 @@ void ProcessServer() {
 	listen(server_socket, 1);
 	int connection = accept(server_socket, nullptr, nullptr);
 	
-	char msg[100] = "HELLO FROM SERVER!";
+	char msg[1000] = "MAC Address \t\tIP Address \tTime since last seen\n";
+	
+	for (size_t i = 0; i < neighbor_count; i++) {
+		uint32_t time_since_last_seen = GetTime() - neighbors[i].last_seen;
+		
+		if (time_since_last_seen > 30) continue;
+		
+		char entry[100];
+		
+		uint8_t ip_address[4];
+		*(uint32_t*)&ip_address = neighbors[i].ip_address;
+		
+		sprintf(entry, 
+			"%02x:%02x:%02x:%02x:%02x:%02x\t%i.%i.%i.%i\t%i\n",
+			neighbors[i].mac_address[0], neighbors[i].mac_address[1],
+			neighbors[i].mac_address[2], neighbors[i].mac_address[3],
+			neighbors[i].mac_address[4], neighbors[i].mac_address[5],
+			ip_address[0], ip_address[1], ip_address[2], ip_address[3],
+			time_since_last_seen
+		);
+		
+		strcat(msg, entry);
+	}
 	
 	send(connection, msg, sizeof(msg), 0);
 	closesocket(connection);
@@ -171,13 +193,13 @@ int main(int argc, const char** argv) {
 	neighbors[0] = {
 		{100, 134, 151, 01, 149, 24},
 		0x8304861F,
-		GetTime()
+		GetTime() + 12
 	};
 	
 	neighbors[2] = {
 		{100, 134, 151, 01, 149, 24},
 		0xF004811F,
-		GetTime()
+		GetTime() + 20
 	};
 	
 	neighbors[1] = {
@@ -227,8 +249,6 @@ int main(int argc, const char** argv) {
 		});
 		
 		for (;;) {
-			//std::this_thread::yield();
-			std::this_thread::sleep_for(std::chrono::seconds(1));
 			ProcessServer();
 		}
 	}

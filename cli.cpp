@@ -1,9 +1,5 @@
 #include <cstdio>
 #include <cstdlib>
-#include <cstdint>
-
-#include <chrono>
-#include <thread>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
