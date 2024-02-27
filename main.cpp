@@ -12,6 +12,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+// UDP paketes saturs
 enum DatagramType {
 	DATAGRAM_BROADCAST,
 	DATAGRAM_REPLY
@@ -22,10 +23,12 @@ struct Datagram {
 	uint8_t mac_address[6];
 };
 
+// UDP tīkla servisa sockets
 static sockaddr_in outgoing_broadcast_info;
 static sockaddr_in incoming_broadcast_info;
 static int broadcast_socket = 0;
 
+// TCP servera sockets
 static sockaddr_in server_info;
 static int server_socket = 0;
 
@@ -42,7 +45,7 @@ static Neighbor neighbors[100];
 size_t neighbor_count = 0;
 
 
-
+// atver socketus
 void InitNetwork(bool skipbind = false) {
 	WSADATA wsaData;
 	int iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
@@ -64,7 +67,7 @@ void InitNetwork(bool skipbind = false) {
 	incoming_broadcast_info.sin_addr.s_addr = htonl(INADDR_ANY);
 	
 	
-	// broadcast spcket
+	// UDP tīkla servisa sockets
 	broadcast_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	
 	if (broadcast_socket == INVALID_SOCKET) {
@@ -87,7 +90,7 @@ void InitNetwork(bool skipbind = false) {
 	
 	
 	
-	// tcp socket
+	// TCP servera sockets
 	memset(&server_info, 0, sizeof(server_info));
 	
 	server_info.sin_family = AF_INET;
@@ -109,8 +112,16 @@ void InitNetwork(bool skipbind = false) {
     }
 }
 
+// aizver socketus
 void UninitNetwork() {
 	int iResult = closesocket(broadcast_socket);
+    if (iResult == SOCKET_ERROR) {
+        printf("closesocket failed with error: %d\n", WSAGetLastError());
+        WSACleanup();
+        abort();
+    }
+	
+	iResult = closesocket(server_socket);
     if (iResult == SOCKET_ERROR) {
         printf("closesocket failed with error: %d\n", WSAGetLastError());
         WSACleanup();
@@ -120,16 +131,22 @@ void UninitNetwork() {
 	WSACleanup();
 }
 
+// atrod savu MAC adresi
 void GetSelfMAC(uint8_t* mac) {
+	// MAC adresi var atrast ar dažādiem sistēmas izsaukiem, bet man šodien nav
+	// garastāvokļa ar to ņemties
+	
 	static uint8_t self_mac[6] = {(uint8_t)rand(), (uint8_t)rand(), (uint8_t)rand(), (uint8_t)rand(), (uint8_t)rand(), (uint8_t)rand()};
 	memcpy(mac, self_mac, 6);
 }
 
+// atrod laiku, sekundēs no laika sākuma
 uint32_t GetTime() {
 	return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-void BroadcastMessage(const char* msg, int len) {
+// nosūta UDP paziņojumu visiem tīklā pieslēgtajiem datoriem
+void BroadcastMessage(const char* msg, size_t len) {
 	int iResult = sendto(broadcast_socket,
                      msg, len, 0, (SOCKADDR *) & outgoing_broadcast_info, sizeof (outgoing_broadcast_info));
     if (iResult == SOCKET_ERROR) {
@@ -141,6 +158,27 @@ void BroadcastMessage(const char* msg, int len) {
 	printf("SENT: %d\n", iResult);
 }
 
+// nosūta UDP paziņojumu specifiskam datoram
+void SendMessage(uint32_t address, const char* msg, size_t len) {
+	sockaddr_in message_info;
+	memset(&message_info, 0, sizeof(message_info));
+	
+	message_info.sin_family = AF_INET;
+	message_info.sin_port = htons(4444);
+	message_info.sin_addr.S_un.S_addr = address;
+	
+	int iResult = sendto(broadcast_socket,
+                     msg, len, 0, (SOCKADDR *) & message_info, sizeof (message_info));
+    if (iResult == SOCKET_ERROR) {
+        printf("SendMessage failed with error: %d\n", WSAGetLastError());
+		WSACleanup();
+       abort();
+    }
+	
+	printf("SENT: %d\n", iResult);
+}
+
+// saņem UDP paziņojumu
 void ReceiveMessage(char* msg, size_t max_len, uint32_t* sender_address = nullptr) {
 	struct sockaddr_in SenderAddr;
     int SenderAddrSize = sizeof (SenderAddr);
@@ -157,19 +195,25 @@ void ReceiveMessage(char* msg, size_t max_len, uint32_t* sender_address = nullpt
 	if (sender_address) *sender_address = SenderAddr.sin_addr.S_un.S_addr;
 }
 
+// apstrādā TCP serveri
 void ProcessServer() {
+	
+	// pieņem jaunu savienojumu
 	listen(server_socket, 1);
 	int connection = accept(server_socket, nullptr, nullptr);
 	
+	// sagatavo atbildi
 	char msg[1000] = "MAC Address \t\tIP Address \tTime since last seen\n";
 	
 	for (size_t i = 0; i < neighbor_count; i++) {
 		uint32_t time_since_last_seen = GetTime() - neighbors[i].last_seen;
-		
+	
+		// izlaiž tos datorus, kuri nav atsaukušies ilgāk par 30 sekundēm
 		if (time_since_last_seen > 30) continue;
 		
 		char entry[100];
 		
+		// sadala IP adresi pa baitiem
 		uint8_t ip_address[4];
 		*(uint32_t*)&ip_address = neighbors[i].ip_address;
 		
@@ -185,6 +229,7 @@ void ProcessServer() {
 		strcat(msg, entry);
 	}
 	
+	// nosūta atbildi un aizver savienojumu
 	send(connection, msg, sizeof(msg), 0);
 	closesocket(connection);
 }
@@ -229,21 +274,61 @@ int main(int argc, const char** argv) {
 		std::thread broadcast_server([&](){
 			for (;;) {
 				printf("waiting\n");
-				char rec[1000];
-				uint32_t addr;
-				ReceiveMessage(rec, 100, &addr);
 				
-				unsigned char poop[4];
-				*(uint32_t*)poop = addr;
+				Datagram received_datagram;
+				uint32_t sender_address;
+				ReceiveMessage((char*)&received_datagram, sizeof(received_datagram), &sender_address);
 				
-				printf("message: %s \n", rec);
-				printf("from: %i %i %i %i \n", poop[0], poop[1], poop[2], poop[3]);
+				switch (received_datagram.type) {
+					case DATAGRAM_BROADCAST: {
+						printf("Received broadcast!");
+					
+						Datagram reply;
+						reply.type = DATAGRAM_REPLY;
+						GetSelfMAC(reply.mac_address);
+						
+						SendMessage(sender_address, (char*)&reply, sizeof(reply));
+						
+						printf("Responded to broadcast!");
+						} break;
+					case DATAGRAM_REPLY: {
+						printf("Received reply!");
+						
+						size_t neighbor = -1;
+						for (size_t i = 0; i < neighbor_count; i++) {
+							if (memcmp(received_datagram.mac_address, neighbors[i].mac_address, 6) == 0) {
+								neighbor = i;
+								break;
+							}
+						}
+						
+						if (neighbor == -1) {
+							neighbors[neighbor_count].ip_address = sender_address;
+							neighbors[neighbor_count].last_seen = GetTime();
+							memcpy(neighbors[neighbor_count].mac_address, received_datagram.mac_address, 6);
+							
+							neighbor_count++;
+						} else {
+							neighbors[neighbor_count].last_seen = GetTime();
+						}
+						
+						} break;
+					default:
+						printf("Unrecognized datagram type: %i\n", received_datagram.type);
+				}
 			}
 		});
 		
 		std::thread broadcast_client([&](){
 			for (;;) {
-				printf("*BROADCASTING*\n");
+				Datagram broadcast;
+				broadcast.type = DATAGRAM_BROADCAST;
+				GetSelfMAC(broadcast.mac_address);
+				
+				BroadcastMessage((char*)&broadcast, sizeof(broadcast));
+				
+				printf("Broadcasted!\n");
+				
 				std::this_thread::sleep_for(std::chrono::seconds(30));
 			}
 		});
@@ -257,5 +342,6 @@ int main(int argc, const char** argv) {
 	
 	
 	UninitNetwork();
+	
 	return 0;
 }
