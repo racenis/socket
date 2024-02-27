@@ -1,26 +1,42 @@
 #include <cstdio>
 #include <cstdlib>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
+#ifdef _WIN32
+	#ifndef WIN32_LEAN_AND_MEAN
+	#define WIN32_LEAN_AND_MEAN
+	#endif
+
+	#include <winsock2.h>
+	
+	#define ERROR_VALUE WSAGetLastError()
+	#define close(X) closesocket(X)
+#else
+	#include <sys/types.h>
+	#include <sys/socket.h>
+	#include <netinet/in.h>
+	#include <arpa/inet.h>
+	#include <netdb.h> 
+	
+	#define ERROR_VALUE errno
+	#define INVALID_SOCKET -1
+	#define SOCKET_ERROR -1
 #endif
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-
 int main(int argc, const char** argv) {
-	WSADATA wsaData;
-	int iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
-	if (iResult != 0) {
-		printf("WSAStartup failed: %d\n", iResult);
+	int error;
+#ifdef _WIN32
+	WSADATA wsa_data;
+	error = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+	if (error != 0) {
+		printf("Winsock startup failed: %i\n", error);
 		abort();
 	}
+#endif
 	
 	printf("Connecting...\n");
 	
 	sockaddr_in socket_info;
-	int connect_socket = 0;
+	int connect_socket;
 	
 	memset(&socket_info, 0, sizeof(socket_info));
 	
@@ -30,15 +46,13 @@ int main(int argc, const char** argv) {
 	
 	connect_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (connect_socket == INVALID_SOCKET) {
-		printf("Error opening server socket: %i\n", WSAGetLastError());
+		printf("Error opening service socket: %i\n", ERROR_VALUE);
 		abort();
 	}
 	
-	iResult = connect(connect_socket, (SOCKADDR *) &socket_info, sizeof(socket_info));
-    if (iResult == SOCKET_ERROR) {
-        printf("connect tcvpfailed with error %u\n", WSAGetLastError());
-        closesocket(connect_socket);
-        WSACleanup();
+	error = connect(connect_socket, (sockaddr*)&socket_info, sizeof(socket_info));
+    if (error == SOCKET_ERROR) {
+        printf("Error connecting to service: %i\n", ERROR_VALUE);
         abort();
     }
 	
@@ -47,4 +61,6 @@ int main(int argc, const char** argv) {
 	recv(connect_socket, msg, 1000, 0);
 	
 	printf("%s\n", msg);
+	
+	return 0;
 }
