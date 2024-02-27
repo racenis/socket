@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
+#include <cstring>
 
 #include <chrono>
 #include <thread>
@@ -90,7 +91,11 @@ void InitNetwork() {
 		abort();
 	}
 	
+#ifdef _WIN32
 	char broadcast = 1;
+#else
+	int broadcast = 1;
+#endif
 	setsockopt(broadcast_socket, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast));
 	
 	error = bind(broadcast_socket, (sockaddr*)&incoming_broadcast_info, sizeof(incoming_broadcast_info));
@@ -170,7 +175,7 @@ void SendMessage(uint32_t address, const char* msg, size_t len) {
 
 	message_info.sin_family = AF_INET;
 	message_info.sin_port = htons(4444);
-	message_info.sin_addr.S_un.S_addr = address;
+	message_info.sin_addr.s_addr = address;
 
 	int error = sendto(broadcast_socket, msg, len, 0, (sockaddr*)&message_info, sizeof(message_info));
 	if (error == SOCKET_ERROR) {
@@ -182,7 +187,11 @@ void SendMessage(uint32_t address, const char* msg, size_t len) {
 // saņem UDP paziņojumu
 void ReceiveMessage(char* msg, size_t max_len, uint32_t* sender_address = nullptr) {
 	sockaddr_in address;
+#ifdef _WIN32
     int address_size = sizeof(address);
+#else
+	unsigned int address_size = sizeof(address);
+#endif
 	
 	int error = recvfrom(broadcast_socket, msg, max_len, 0, (sockaddr*)&address, &address_size);
     if (error == SOCKET_ERROR) {
@@ -190,7 +199,7 @@ void ReceiveMessage(char* msg, size_t max_len, uint32_t* sender_address = nullpt
 		abort();
 	}
 	
-	if (sender_address) *sender_address = address.sin_addr.S_un.S_addr;
+	if (sender_address) *sender_address = address.sin_addr.s_addr;
 }
 
 // apstrādā TCP serveri
@@ -247,7 +256,11 @@ int main(int argc, const char** argv) {
 			
 			switch (received_datagram.type) {
 				case DATAGRAM_BROADCAST: {
-					printf("Received broadcast!\n");
+					printf("Received broadcast!\tFrom: %02x:%02x:%02x:%02x:%02x:%02x\n",
+						received_datagram.mac_address[0], received_datagram.mac_address[1],
+						received_datagram.mac_address[2], received_datagram.mac_address[3],
+						received_datagram.mac_address[4], received_datagram.mac_address[5]
+					);
 				
 					Datagram reply;
 					reply.type = DATAGRAM_REPLY;
@@ -258,7 +271,11 @@ int main(int argc, const char** argv) {
 					printf("Responded to broadcast!\n");
 					} break;
 				case DATAGRAM_REPLY: {
-					printf("Received reply!\n");
+					printf("Received reply!\t\tFrom: %02x:%02x:%02x:%02x:%02x:%02x\n",
+						received_datagram.mac_address[0], received_datagram.mac_address[1],
+						received_datagram.mac_address[2], received_datagram.mac_address[3],
+						received_datagram.mac_address[4], received_datagram.mac_address[5]
+					);
 					
 					size_t neighbor = -1;
 					for (size_t i = 0; i < neighbor_count; i++) {

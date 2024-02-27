@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #ifdef _WIN32
 	#ifndef WIN32_LEAN_AND_MEAN
@@ -16,6 +17,7 @@
 	#include <netinet/in.h>
 	#include <arpa/inet.h>
 	#include <netdb.h> 
+	#include <errno.h> 
 	
 	#define ERROR_VALUE errno
 	#define INVALID_SOCKET -1
