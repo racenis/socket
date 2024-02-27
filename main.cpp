@@ -235,26 +235,6 @@ void ProcessServer() {
 }
 
 int main(int argc, const char** argv) {
-	neighbors[0] = {
-		{100, 134, 151, 01, 149, 24},
-		0x8304861F,
-		GetTime() + 12
-	};
-	
-	neighbors[2] = {
-		{100, 134, 151, 01, 149, 24},
-		0xF004811F,
-		GetTime() + 20
-	};
-	
-	neighbors[1] = {
-		{100, 41, 151, 61, 149, 71},
-		0x83E486AF,
-		GetTime()
-	};
-	neighbor_count = 3;
-	
-	
 	printf("ASDNASFABNFAIF\n");
 	
 	char msg[100] = "I am LIGMA MAN!";
@@ -309,7 +289,7 @@ int main(int argc, const char** argv) {
 							
 							neighbor_count++;
 						} else {
-							neighbors[neighbor_count].last_seen = GetTime();
+							neighbors[neighbor].last_seen = GetTime();
 						}
 						
 						} break;
@@ -329,7 +309,7 @@ int main(int argc, const char** argv) {
 				
 				printf("Broadcasted!\n");
 				
-				std::this_thread::sleep_for(std::chrono::seconds(30));
+				std::this_thread::sleep_for(std::chrono::seconds(25));
 			}
 		});
 		
